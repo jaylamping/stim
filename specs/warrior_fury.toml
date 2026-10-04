@@ -1,0 +1,147 @@
+[class]
+name = "Warrior"
+spec = "Fury"
+notes = """
+Classic-era dual-wield Fury kit, used to prove the engine is class-agnostic. WoW Forever's warrior
+kit may differ. Every number is a placeholder: replace with in-game tooltip values."""
+
+[combat]
+gcd = 1.5
+crit_chance = 0.30
+crit_multiplier = 2.0
+melee_range = 5.0
+run_speed = 7.0
+dodge_chance = 0.05
+glancing_chance = 0.40
+glancing_multiplier = 0.85
+dual_wield_miss = 0.16
+
+[weapons]
+main_hand = { damage = 290, speed = 2.6 }
+off_hand = { damage = 150, speed = 2.0 }
+
+[resources.rage]
+kind = "rage"
+max = 100
+start = 0
+per_white_damage = 0.0325
+
+[buffs.flurry]
+duration = 15
+charges = 3
+consumed_by = "swing"
+haste = 0.30
+
+[buffs.death_wish]
+duration = 30
+damage_mult = 0.20
+
+[buffs.battle_shout]
+duration = 120
+damage_mult = 0.06
+
+[[procs]]
+id = "flurry"
+trigger = "crit"
+chance = 1.0
+buff = "flurry"
+
+[[procs]]
+id = "unbridled_wrath"
+trigger = "white_hit"
+chance = 0.40
+gain = { rage = 1 }
+
+[[procs]]
+id = "deep_wounds"
+trigger = "yellow_crit"
+chance = 1.0
+dot = { ticks = 4, interval = 3.0, per_tick = 45 }
+
+[[abilities]]
+id = "bloodthirst"
+key = "1"
+cost = { rage = 30 }
+cooldown = 6
+damage = { flat = 540 }
+
+[[abilities]]
+id = "whirlwind"
+key = "2"
+cost = { rage = 25 }
+cooldown = 10
+damage = { weapon = 1.0, aoe_radius = 8, max_targets = 4 }
+
+[[abilities]]
+id = "execute"
+key = "3"
+cost = { rage = 10 }
+damage = { flat = 600 }
+extra = { resource = "rage", max = 90, damage_per = 15 }
+requires = { target_health_below = 0.20 }
+
+[[abilities]]
+id = "heroic_strike"
+key = "4"
+cost = { rage = 13 }
+next_swing = true
+damage = { weapon = 1.0, flat = 157 }
+
+[[abilities]]
+id = "cleave"
+key = "5"
+cost = { rage = 20 }
+next_swing = true
+damage = { weapon = 1.0, flat = 50, extra_targets = 1 }
+
+[[abilities]]
+id = "battle_shout"
+key = "q"
+cost = { rage = 10 }
+buff = "battle_shout"
+
+[[abilities]]
+id = "death_wish"
+key = "f"
+cost = { rage = 10 }
+cooldown = 180
+buff = "death_wish"
+
+[[abilities]]
+id = "bloodrage"
+key = "r"
+cooldown = 60
+off_gcd = true
+gain = { rage = 20 }
+
+[teacher]
+reference_dps = 900
+resource_value = { rage = 15 }
+
+[[apl]]
+use = "battle_shout"
+if = "not buff.battle_shout.up"
+
+[[apl]]
+use = "death_wish"
+
+[[apl]]
+use = "execute"
+
+[[apl]]
+use = "bloodthirst"
+
+[[apl]]
+use = "whirlwind"
+
+[[apl]]
+use = "cleave"
+if = "rage >= 50 and enemies >= 2"
+
+[[apl]]
+use = "heroic_strike"
+if = "rage >= 50"
+
+[[apl]]
+use = "bloodrage"
+if = "rage < 30"

@@ -1,0 +1,131 @@
+[class]
+name = "Rogue"
+spec = "Combat"
+notes = """
+Classic-era Combat Swords kit, used to prove the engine is class-agnostic. WoW Forever's rogue kit
+may differ. Every number is a placeholder: replace with in-game tooltip values."""
+
+[combat]
+gcd = 1.0
+crit_chance = 0.28
+crit_multiplier = 2.0
+melee_range = 5.0
+run_speed = 7.0
+dodge_chance = 0.05
+glancing_chance = 0.40
+glancing_multiplier = 0.85
+dual_wield_miss = 0.16
+
+[weapons]
+main_hand = { damage = 330, speed = 2.7 }
+off_hand = { damage = 140, speed = 1.8 }
+
+[resources.energy]
+kind = "energy"
+max = 100
+tick = { amount = 20, interval = 2.0 }
+
+[resources.combo_points]
+kind = "secondary"
+max = 5
+on_target = true
+
+[buffs.slice_and_dice]
+duration_by_points = [0, 13, 17.4, 21.8, 26.1, 30.5]
+haste = 0.30
+
+[buffs.blade_flurry]
+duration = 15
+haste = 0.20
+cleave_targets = 1
+
+[buffs.adrenaline_rush]
+duration = 15
+regen_mult = { energy = 2.0 }
+
+[[procs]]
+id = "sword_specialization"
+trigger = "hit"
+chance = 0.05
+extra_attacks = 1
+
+[[procs]]
+id = "instant_poison"
+trigger = "hit"
+chance = 0.20
+damage = { flat = 130, school = "nature" }
+
+[[abilities]]
+id = "sinister_strike"
+key = "1"
+cost = { energy = 40 }
+gain = { combo_points = 1 }
+damage = { weapon = 1.0, flat = 68 }
+
+[[abilities]]
+id = "eviscerate"
+key = "2"
+cost = { energy = 35 }
+finisher = "combo_points"
+damage = { by_points = [0, 245, 430, 615, 800, 985] }
+
+[[abilities]]
+id = "slice_and_dice"
+key = "3"
+cost = { energy = 25 }
+finisher = "combo_points"
+buff = "slice_and_dice"
+
+[[abilities]]
+id = "rupture"
+key = "4"
+cost = { energy = 25 }
+finisher = "combo_points"
+dot = { ticks = 8, interval = 2.0, per_tick = 20, per_tick_per_point = 20 }
+
+[[abilities]]
+id = "blade_flurry"
+key = "q"
+cost = { energy = 25 }
+cooldown = 120
+buff = "blade_flurry"
+
+[[abilities]]
+id = "adrenaline_rush"
+key = "f"
+cooldown = 300
+off_gcd = true
+buff = "adrenaline_rush"
+
+[[abilities]]
+id = "thistle_tea"
+key = "t"
+cooldown = 300
+off_gcd = true
+gain = { energy = 100 }
+
+[teacher]
+reference_dps = 800
+resource_value = { energy = 12, combo_points = 120 }
+
+[[apl]]
+use = "slice_and_dice"
+if = "not buff.slice_and_dice.up"
+
+[[apl]]
+use = "adrenaline_rush"
+
+[[apl]]
+use = "blade_flurry"
+
+[[apl]]
+use = "eviscerate"
+if = "combo_points >= 5 and buff.slice_and_dice.remains > 3"
+
+[[apl]]
+use = "sinister_strike"
+if = "combo_points < 5"
+
+[[apl]]
+use = "thistle_tea"
+if = "energy < 20"

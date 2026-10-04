@@ -1,0 +1,180 @@
+[class]
+name = "Druid"
+spec = "Feral"
+notes = """
+Kit follows WoW Forever beta reports as of Oct 1-4, 2026: Tiger's Fury removed, Mangle renamed
+Primal Bite (no debuff), powershifting formalized as Shifting Power, Berserk as the 31-point
+talent, cat Feral Charge leaps behind the target, Primal Fury adds a combo point on builder crits.
+Every number is a placeholder: replace with in-game tooltip values."""
+
+[combat]
+gcd = 1.0
+crit_chance = 0.30
+crit_multiplier = 2.0
+melee_range = 5.0
+run_speed = 7.0
+
+[weapons]
+main_hand = { damage = 180, speed = 1.0 }
+
+[resources.energy]
+kind = "energy"
+max = 100
+tick = { amount = 20, interval = 2.0 }
+
+[resources.combo_points]
+kind = "secondary"
+max = 5
+on_target = true
+
+[resources.mana]
+kind = "mana"
+max = 4000
+regen_per_sec = 8
+
+[buffs.clearcasting]
+duration = 15
+consumed_by = "cost"
+cost_mult = 0.0
+
+[buffs.berserk]
+duration = 15
+cost_mult = { energy = 0.5 }
+
+[debuffs.faerie_fire]
+name = "Faerie Fire (Feral)"
+duration = 40
+damage_taken = { physical = 0.05 }
+
+[[procs]]
+id = "omen_of_clarity"
+trigger = "white_hit"
+chance = 0.06
+buff = "clearcasting"
+
+[[procs]]
+id = "primal_fury"
+trigger = "builder_crit"
+chance = 1.0
+gain = { combo_points = 1 }
+
+[[abilities]]
+id = "shred"
+key = "1"
+cost = { energy = 48 }
+gain = { combo_points = 1 }
+damage = { weapon = 2.25, flat = 180 }
+requires = { behind = true }
+
+[[abilities]]
+id = "primal_bite"
+key = "2"
+cost = { energy = 40 }
+gain = { combo_points = 1 }
+damage = { weapon = 1.6, flat = 110 }
+
+[[abilities]]
+id = "rake"
+key = "3"
+cost = { energy = 35 }
+gain = { combo_points = 1 }
+damage = { flat = 100 }
+dot = { ticks = 3, interval = 3.0, per_tick = 140 }
+
+[[abilities]]
+id = "rip"
+key = "4"
+cost = { energy = 30 }
+finisher = "combo_points"
+dot = { ticks = 6, interval = 2.0, per_tick = 30, per_tick_per_point = 34 }
+
+[[abilities]]
+id = "ferocious_bite"
+key = "5"
+cost = { energy = 35 }
+finisher = "combo_points"
+damage = { by_points = [0, 200, 380, 560, 740, 920] }
+extra = { resource = "energy", max = 30, damage_per = 2.7 }
+
+[[abilities]]
+id = "faerie_fire"
+name = "Faerie Fire (Feral)"
+key = "q"
+cooldown = 6
+debuff = "faerie_fire"
+
+[[abilities]]
+id = "feral_charge"
+key = "e"
+cost = { energy = 10 }
+cooldown = 15
+gap_closer = true
+range = [8, 25]
+
+[[abilities]]
+id = "shifting_power"
+key = "r"
+cost = { mana = 300 }
+gcd = 1.5
+set = { energy = 60 }
+
+[[abilities]]
+id = "berserk"
+key = "f"
+cooldown = 120
+off_gcd = true
+buff = "berserk"
+
+[[abilities]]
+id = "thistle_tea"
+key = "t"
+cooldown = 300
+off_gcd = true
+gain = { energy = 100 }
+
+# Exchange rates the teacher uses for resources still unspent when a rollout ends.
+[teacher]
+reference_dps = 700
+resource_value = { energy = 12, combo_points = 140, mana = 1.5 }
+
+# A Hekili-style priority list, adapted from Forever beta guides. It is only a baseline to beat.
+[[apl]]
+use = "faerie_fire"
+if = "not debuff.faerie_fire.up"
+
+[[apl]]
+use = "berserk"
+
+[[apl]]
+use = "shred"
+if = "buff.clearcasting.up"
+
+[[apl]]
+use = "shifting_power"
+if = "energy < 40"
+
+[[apl]]
+use = "rip"
+if = "combo_points >= 5 and dot.rip.remains < 1 and target.time_to_die > 8"
+
+[[apl]]
+use = "rake"
+if = "dot.rake.remains < 1 and target.time_to_die > 6"
+
+[[apl]]
+use = "ferocious_bite"
+if = "combo_points >= 5 and (dot.rip.remains > 6 or target.time_to_die < 8)"
+
+[[apl]]
+use = "shred"
+
+[[apl]]
+use = "primal_bite"
+if = "not behind"
+
+[[apl]]
+use = "feral_charge"
+
+[[apl]]
+use = "thistle_tea"
+if = "energy < 30"

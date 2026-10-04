@@ -11,3 +11,4 @@ wheels/
 
 # Training runs, generated data, checkpoints
 runs/
+.pytest_cache/
