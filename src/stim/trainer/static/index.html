@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stim trainer</title>
+<style>
+  :root {
+    --bg: #0f1216; --panel: #181d24; --panel2: #1f262f; --line: #2b3440; --text: #e4e7eb; --dim: #8a94a3;
+    --accent: #f5b942; --good: #5cc98a; --bad: #e25d5d; --blue: #4a90d9; --energy: #f2d14b; --rage: #d9534f;
+    --mana: #4a90d9; --points: #e8823a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  button, select, input { font: inherit; color: inherit; }
+  .app { display: grid; grid-template-rows: auto 1fr auto; height: max(100vh, 600px); gap: 8px; padding: 8px 10px; }
+  header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; row-gap: 4px; }
+  header h1 { font-size: 17px; margin: 0 6px 0 0; letter-spacing: .5px; }
+  header h1 span { color: var(--accent); }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select, .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; font-size: 13px; }
+  .btn { cursor: pointer; } .btn:hover { border-color: var(--dim); }
+  .btn.primary { background: var(--accent); color: #1b1404; border-color: var(--accent); font-weight: 600; }
+  .grow { flex: 1; }
+  .stat { color: var(--dim); } .stat b { color: var(--text); font-variant-numeric: tabular-nums; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 10px; min-height: 0; }
+  .map { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-height: 0; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .overlay .card { pointer-events: auto; background: rgba(24, 29, 36, .96); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 22px; max-width: 760px; width: calc(100% - 40px); max-height: calc(100% - 40px); overflow: auto; }
+  .card h2 { margin: 0 0 8px; font-size: 18px; }
+  .side { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .panel h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); font-weight: 600; }
+  .coach .next { font-size: 20px; font-weight: 650; color: var(--accent); min-height: 27px; }
+  .coach .meta { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+  .badge { border-radius: 999px; padding: 1px 8px; font-size: 12px; border: 1px solid var(--line); }
+  .badge.low { color: var(--dim); } .badge.medium { color: var(--text); } .badge.high { color: var(--accent); border-color: var(--accent); }
+  .badge.critical { color: #fff; background: var(--bad); border-color: var(--bad); }
+  .alts { color: var(--dim); font-size: 13px; }
+  .alts div { display: flex; justify-content: space-between; }
+  .bar { position: relative; height: 18px; background: var(--panel2); border-radius: 5px; overflow: hidden; border: 1px solid var(--line); }
+  .bar > i { position: absolute; inset: 0 auto 0 0; background: var(--good); transition: width .08s linear; }
+  .bar > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px;
+    font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 5px 0; }
+  .row label { width: 92px; color: var(--dim); font-size: 13px; }
+  .row .bar { flex: 1; }
+  .pips { display: flex; gap: 5px; flex: 1; }
+  .pips i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--points); }
+  .pips i.on { background: var(--points); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  footer { display: flex; flex-direction: column; gap: 8px; }
+  .abilities { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ab { position: relative; width: 74px; height: 56px; border-radius: 8px; background: var(--panel2); border: 2px solid var(--line);
+    overflow: hidden; cursor: pointer; display: flex; flex-direction: column; justify-content: flex-end; padding: 5px 6px; user-select: none; }
+  .ab .key { position: absolute; top: 3px; left: 6px; font-weight: 700; font-size: 13px; color: var(--dim); text-transform: uppercase; }
+  .ab .name { font-size: 11px; line-height: 1.15; position: relative; z-index: 1; }
+  .ab .cd { position: absolute; inset: auto 0 0 0; background: rgba(0, 0, 0, .62); z-index: 0; }
+  .ab .cdt { position: absolute; top: 3px; right: 6px; font-size: 12px; font-variant-numeric: tabular-nums; z-index: 1; }
+  .ab.off { opacity: .45; }
+  .ab.advised { border-color: var(--accent); box-shadow: 0 0 14px rgba(245, 185, 66, .55); }
+  .ab.flash { background: #2c3644; }
+  .ab .tag { position: absolute; top: 3px; right: 6px; font-size: 10px; color: var(--dim); }
+  .status { display: flex; gap: 16px; align-items: center; min-height: 22px; }
+  .msg { color: var(--bad); font-weight: 600; }
+  .hidden { display: none !important; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .vs { display: flex; gap: 28px; margin: 10px 0 14px; }
+  .vs div span { display: block; color: var(--dim); font-size: 12px; }
+  .help { color: var(--dim); font-size: 13px; }
+  kbd { background: var(--panel2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; }
+  @media (max-width: 760px) { .app { height: auto; min-height: 100vh; } main { grid-template-columns: 1fr; }
+    .map { height: 380px; } .side { overflow: visible; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>stim <span>trainer</span></h1>
+    <div class="controls">
+      <select id="spec"></select>
+      <select id="scenario"></select>
+      <select id="speed">
+        <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+        <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+      </select>
+      <button class="btn primary" id="start">Start</button>
+      <button class="btn" id="pause">Pause</button>
+      <label class="stat"><input type="checkbox" id="coachToggle" checked> coach</label>
+    </div>
+    <div class="grow"></div>
+    <div class="stat">DPS <b id="dps">0</b></div>
+    <div class="stat">time <b id="time">0:00</b></div>
+    <div class="stat" id="connection" title="server connection">…</div>
+  </header>
+
+  <main>
+    <div class="map" id="mapbox">
+      <canvas id="map"></canvas>
+      <div class="overlay" id="intro"><div class="card">
+        <h2>Practice a pull</h2>
+        <p class="help">Pick a spec and an encounter, then start. Press the ability keys shown on the bar; abilities go to
+          your current target. <kbd>Tab</kbd> cycles targets (or click one on the map), <kbd>Space</kbd> pauses. You run
+          behind your target on your own; the green half-circle is where "behind" counts.</p>
+        <p class="help">The coach panel shows what the model would press next, how sure it is, and how much the decision
+          matters. After the pull, the teacher grades your decisions and the model plays the exact same pull for comparison.</p>
+      </div></div>
+      <div class="overlay hidden" id="review"><div class="card" id="reviewCard"></div></div>
+    </div>
+    <div class="side">
+      <div class="panel coach" id="coach">
+        <h3>Coach</h3>
+        <div class="next" id="next">—</div>
+        <div class="meta"><span class="badge" id="stakes">stakes</span><span class="badge" id="conf">confidence</span>
+          <span class="badge" id="survive">target survives</span></div>
+        <div class="alts" id="alts"></div>
+      </div>
+      <div class="panel">
+        <h3>Target</h3>
+        <div id="tname" style="font-weight:600;margin-bottom:5px">—</div>
+        <div class="bar"><i id="thp" style="background:var(--bad)"></i><span id="thpt"></span></div>
+        <div class="chips" id="tauras" style="margin-top:7px"></div>
+      </div>
+      <div class="panel">
+        <h3>You</h3>
+        <div id="resources"></div>
+        <div class="row"><label>GCD</label><div class="bar"><i id="gcd" style="background:var(--dim)"></i><span id="gcdt"></span></div></div>
+        <div class="chips" id="buffs"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="abilities" id="abilities"></div>
+    <div class="status"><span class="msg" id="msg"></span><span class="stat" id="queued"></span></div>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+let ws, state = null, keys = new Set(), lastAbilities = '';
+
+function connect() {
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+  ws.onopen = () => { $('connection').textContent = '●'; $('connection').style.color = 'var(--good)'; };
+  ws.onclose = () => { $('connection').textContent = '● reconnecting'; $('connection').style.color = 'var(--bad)'; setTimeout(connect, 1500); };
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'hello') hello(msg);
+    else if (msg.type === 'state') { state = msg; render(); }
+    else if (msg.type === 'reviewing') showReview(null);
+    else if (msg.type === 'review') showReview(msg);
+  };
+}
+const send = (obj) => ws && ws.readyState === 1 && ws.send(JSON.stringify(obj));
+
+function hello(msg) {
+  $('spec').innerHTML = msg.specs.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+  $('scenario').innerHTML = msg.scenarios.map((s) => `<option value="${s}">${s.replace('_', ' + ')}</option>`).join('');
+  $('spec').value = msg.defaults.spec; $('scenario').value = msg.defaults.scenario;
+  $('speed').value = String(msg.defaults.speed);
+  if (!msg.model) { $('coach').classList.add('hidden'); $('coachToggle').parentElement.classList.add('hidden'); }
+}
+
+function start(seed) {
+  $('intro').classList.add('hidden'); $('review').classList.add('hidden'); lastAbilities = '';
+  send({ type: 'start', spec: $('spec').value, scenario: $('scenario').value, speed: parseFloat($('speed').value), seed });
+  document.activeElement && document.activeElement.blur();
+}
+$('start').onclick = () => start(null);
+$('pause').onclick = () => state && send({ type: 'pause', value: !state.paused });
+$('speed').onchange = () => send({ type: 'speed', value: parseFloat($('speed').value) });
+$('coachToggle').onchange = () => $('coach').classList.toggle('hidden', !$('coachToggle').checked);
+
+document.addEventListener('keydown', (e) => {
+  if (['SELECT', 'INPUT'].includes(e.target.tagName) || e.metaKey || e.ctrlKey) return;
+  if (e.key === 'Tab') { e.preventDefault(); send({ type: 'cycle' }); return; }
+  if (e.key === ' ') { e.preventDefault(); state && send({ type: 'pause', value: !state.paused }); return; }
+  const k = e.key.toLowerCase();
+  if (keys.has(k)) { e.preventDefault(); if (!e.repeat) { send({ type: 'press', key: k }); flash(k); } }
+});
+function flash(k) {
+  const el = document.querySelector(`.ab[data-key="${CSS.escape(k)}"]`);
+  if (el) { el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 120); }
+}
+
+// ---------------------------------------------------------------- map
+const canvas = $('map'), ctx = canvas.getContext('2d');
+let view = { cx: 0, cy: 0, scale: 12 };
+function resize() {
+  const r = $('mapbox').getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, r.width * dpr); canvas.height = Math.max(1, r.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  render();
+}
+window.addEventListener('resize', resize);
+const toScreen = (x, y) => {
+  const r = canvas.getBoundingClientRect();
+  return [r.width / 2 + (x - view.cx) * view.scale, r.height / 2 - (y - view.cy) * view.scale];
+};
+canvas.addEventListener('click', (e) => {
+  if (!state) return;
+  const r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  let best = null, bd = 1e9;
+  for (const en of state.enemies) {
+    const [sx, sy] = toScreen(en.x, en.y), d = Math.hypot(sx - mx, sy - my);
+    if (d < bd) { bd = d; best = en; }
+  }
+  if (best && bd < 3.5 * view.scale) send({ type: 'target', id: best.id });
+});
+
+function drawMap() {
+  const r = canvas.getBoundingClientRect(), W = r.width, H = r.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!state) return;
+  // keep the tank, the player and every enemy in view
+  const xs = [state.tank.x, state.player.x, ...state.enemies.map((e) => e.x)];
+  const ys = [state.tank.y, state.player.y, ...state.enemies.map((e) => e.y)];
+  const span = Math.max(20, Math.max(...xs) - Math.min(...xs) + 12, Math.max(...ys) - Math.min(...ys) + 12);
+  view.scale += ((Math.min(W, H) / span) - view.scale) * 0.08;
+  view.cx += ((Math.max(...xs) + Math.min(...xs)) / 2 - view.cx) * 0.08;
+  view.cy += ((Math.max(...ys) + Math.min(...ys)) / 2 - view.cy) * 0.08;
+  const s = view.scale;
+  // grid every 5 yards
+  ctx.strokeStyle = '#1d242d'; ctx.lineWidth = 1;
+  const x0 = view.cx - W / 2 / s, y0 = view.cy - H / 2 / s;
+  for (let gx = Math.floor(x0 / 5) * 5; gx < x0 + W / s; gx += 5) { const [sx] = toScreen(gx, 0); ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke(); }
+  for (let gy = Math.floor(y0 / 5) * 5; gy < y0 + H / s; gy += 5) { const [, sy] = toScreen(0, gy); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke(); }
+  // current target: melee range and the behind half-circle
+  const tgt = state.enemies.find((e) => e.target);
+  if (tgt) {
+    const [tx, ty] = toScreen(tgt.x, tgt.y), ang = Math.atan2(-tgt.fy, tgt.fx);
+    ctx.beginPath(); ctx.moveTo(tx, ty);
+    ctx.arc(tx, ty, state.melee_range * s, ang + Math.PI / 2, ang + 3 * Math.PI / 2); ctx.closePath();
+    ctx.fillStyle = tgt.behind ? 'rgba(92, 201, 138, .22)' : 'rgba(138, 148, 163, .14)'; ctx.fill();
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = '#3a4554';
+    ctx.beginPath(); ctx.arc(tx, ty, state.melee_range * s, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
+  }
+  // tank
+  const [kx, ky] = toScreen(state.tank.x, state.tank.y);
+  ctx.fillStyle = '#4a90d9'; ctx.beginPath(); ctx.arc(kx, ky, Math.max(5, 0.9 * s), 0, 2 * Math.PI); ctx.fill();
+  ctx.fillStyle = '#9fb6cf'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('tank', kx, ky + Math.max(5, 0.9 * s) + 12);
+  // enemies
+  for (const en of state.enemies) {
+    const [x, y] = toScreen(en.x, en.y), rad = Math.max(7, (en.boss ? 1.3 : 1.0) * s), f = en.hp / en.hp_max;
+    ctx.fillStyle = '#5a2024'; ctx.beginPath(); ctx.arc(x, y, rad, 0, 2 * Math.PI); ctx.fill();
+    ctx.lineWidth = 4; ctx.strokeStyle = '#2a1416'; ctx.beginPath(); ctx.arc(x, y, rad + 3, 0, 2 * Math.PI); ctx.stroke();
+    ctx.strokeStyle = f > 0.35 ? '#e25d5d' : '#ff8a5c';
+    ctx.beginPath(); ctx.arc(x, y, rad + 3, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * f); ctx.stroke();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#f0d0d0';
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + en.fx * (rad + 6), y - en.fy * (rad + 6)); ctx.stroke();
+    if (en.target) { ctx.lineWidth = 2.5; ctx.strokeStyle = '#f5b942'; ctx.beginPath(); ctx.arc(x, y, rad + 8, 0, 2 * Math.PI); ctx.stroke(); }
+    ctx.fillStyle = '#e4e7eb'; ctx.font = (en.boss ? '600 12px' : '11px') + ' sans-serif'; ctx.textAlign = 'center';
+    if (en.target || en.boss) ctx.fillText(en.name, x, y + rad + 17);  // stacked mobs: label only what matters
+    ctx.fillStyle = '#c7ccd3'; ctx.font = '11px sans-serif'; ctx.fillText(`${Math.round(100 * f)}%`, x, y + 4);
+  }
+  // player
+  const [px, py] = toScreen(state.player.x, state.player.y);
+  ctx.fillStyle = state.player.knocked ? '#ff9f43' : '#5cc98a';
+  ctx.beginPath(); ctx.arc(px, py, Math.max(5, 0.6 * s), 0, 2 * Math.PI); ctx.fill();
+  ctx.strokeStyle = '#0f1216'; ctx.lineWidth = 2; ctx.stroke();
+  if (state.paused) { ctx.fillStyle = 'rgba(15,18,22,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#e4e7eb';
+    ctx.font = '600 22px sans-serif'; ctx.fillText('paused — Space to resume', W / 2, H / 2); }
+}
+
+// ---------------------------------------------------------------- panels
+function render() {
+  drawMap();
+  if (!state) return;
+  $('dps').textContent = Math.round(state.dps);
+  $('time').textContent = fmt(state.t);
+  $('pause').textContent = state.paused ? 'Resume' : 'Pause';
+  $('msg').textContent = state.message;
+  $('queued').textContent = state.player.queued ? `queued: ${state.player.queued}` : '';
+  // coach
+  const a = state.advice;
+  $('next').textContent = a ? a.text : '—';
+  $('stakes').textContent = a ? `stakes: ${a.stakes}` : 'stakes';
+  $('stakes').className = 'badge ' + (a ? a.stakes : '');
+  $('conf').textContent = a ? `sure: ${Math.round(100 * a.confidence)}%` : 'confidence';
+  $('survive').textContent = a ? `target lives 12s: ${Math.round(100 * a.survive)}%` : 'target survives';
+  $('alts').innerHTML = a ? a.top.map((o) => `<div><span>${o.text}</span><span>${Math.round(100 * o.p)}%</span></div>`).join('') : '';
+  // target
+  const tgt = state.enemies.find((e) => e.target);
+  $('tname').textContent = tgt ? `${tgt.name} · ${tgt.dist.toFixed(1)} yd${tgt.behind ? ' · behind' : ''}` : 'no target';
+  const f = tgt ? tgt.hp / tgt.hp_max : 0;
+  $('thp').style.width = `${100 * f}%`; $('thpt').textContent = tgt ? `${Math.round(100 * f)}%` : '';
+  $('tauras').innerHTML = tgt ? [...tgt.dots, ...tgt.debuffs].map((d) => `<span class="chip">${d.name} ${d.remaining.toFixed(0)}s</span>`).join('') : '';
+  // resources
+  $('resources').innerHTML = state.resources.map((r) => {
+    const v = r.on_target ? (r.holder === state.target ? r.value : 0) : r.value;
+    if (r.on_target && r.max <= 10) {
+      const pips = Array.from({ length: r.max }, (_, i) => `<i class="${i < v ? 'on' : ''}"></i>`).join('');
+      return `<div class="row"><label>${r.id.replace('_', ' ')}</label><div class="pips">${pips}</div></div>`;
+    }
+    const color = { energy: 'var(--energy)', rage: 'var(--rage)', mana: 'var(--mana)' }[r.kind] || 'var(--points)';
+    return `<div class="row"><label>${r.id.replace('_', ' ')}</label><div class="bar"><i style="width:${100 * v / r.max}%;background:${color}"></i><span>${Math.floor(v)} / ${r.max}</span></div></div>`;
+  }).join('');
+  const g = state.player.gcd;
+  $('gcd').style.width = `${100 * g / state.player.gcd_total}%`; $('gcdt').textContent = g > 0 ? g.toFixed(1) : 'ready';
+  $('buffs').innerHTML = state.buffs.map((b) => `<span class="chip">${b.name}${b.stacks > 1 ? ' ×' + b.stacks : ''} ${b.remaining.toFixed(0)}s</span>`).join('');
+  // ability bar (rebuilt only when the spec changes)
+  const sig = state.abilities.map((x) => x.id).join();
+  if (sig !== lastAbilities) {
+    lastAbilities = sig; keys = new Set(state.abilities.map((x) => x.key.toLowerCase()).filter(Boolean));
+    $('abilities').innerHTML = state.abilities.map((x) => `<div class="ab" data-key="${x.key.toLowerCase()}" data-id="${x.id}">
+      <span class="key">${x.key}</span><span class="cdt"></span>${x.off_gcd ? '<span class="tag">off-GCD</span>' : ''}
+      <div class="cd"></div><span class="name">${x.name}</span></div>`).join('');
+    document.querySelectorAll('.ab').forEach((el) => el.onclick = () => { send({ type: 'press', key: el.dataset.key }); flash(el.dataset.key); });
+  }
+  const coachOn = $('coachToggle').checked;
+  for (const x of state.abilities) {
+    const el = document.querySelector(`.ab[data-id="${x.id}"]`);
+    if (!el) continue;
+    el.classList.toggle('off', !x.usable);
+    el.classList.toggle('advised', coachOn && x.advised);
+    const frac = x.cooldown_total > 0 ? x.cooldown / x.cooldown_total : 0;
+    el.querySelector('.cd').style.height = `${100 * frac}%`;
+    const t = el.querySelector('.cdt'); t.textContent = x.cooldown > 0 ? (x.cooldown >= 10 ? x.cooldown.toFixed(0) : x.cooldown.toFixed(1)) : '';
+  }
+}
+
+function showReview(r) {
+  const card = $('reviewCard');
+  $('review').classList.remove('hidden');
+  if (!r) { card.innerHTML = '<h2>Pull over</h2><p class="help">Grading your decisions and letting the model play the same pull…</p>'; return; }
+  const rows = r.worst.map((d) => `<tr><td class="num">${fmt(d.t)}</td><td>${d.chosen}${d.delay >= 0.5 ? ` <span class="stat">(+${d.delay.toFixed(1)}s)</span>` : ''}</td>
+    <td>${d.best}</td><td class="num">${d.regret.toFixed(2)}s</td><td class="stat">${d.context}</td></tr>`).join('');
+  card.innerHTML = `<h2>Pull review</h2>
+    <div class="vs"><div><span>your DPS</span><div class="big">${Math.round(r.dps)}</div></div>
+      ${r.model_dps != null ? `<div><span>model on the same pull</span><div class="big">${Math.round(r.model_dps)}</div></div>` : ''}
+      <div><span>decisions graded</span><div class="big">${r.decisions}</div></div>
+      <div><span>cost of mistakes</span><div class="big">${r.regret_total.toFixed(1)}s</div></div>
+      <div><span>matched the coach</span><div class="big">${Math.round(100 * r.advice_followed)}%</div></div></div>
+    <p class="help">Cost is in seconds of your spec's reference DPS: what each choice gave up against the teacher's best option,
+      by simulating ahead from that moment. Waiting with something usable counts as a choice.</p>
+    <table><thead><tr><th>time</th><th>you</th><th>better</th><th>cost</th><th>situation</th></tr></thead><tbody>${rows || '<tr><td colspan=5>No decisions recorded.</td></tr>'}</tbody></table>
+    <div class="controls" style="margin-top:14px"><button class="btn primary" id="again">Replay this pull</button><button class="btn" id="fresh">New pull</button></div>`;
+  $('again').onclick = () => start(state ? state.seed : null);
+  $('fresh').onclick = () => start(null);
+}
+
+connect();
+resize();
+</script>
+</body>
+</html>

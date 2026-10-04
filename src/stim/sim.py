@@ -23,6 +23,13 @@ KNOCKED_TIME = 0.6  # a knockback stops the player from acting or moving for thi
 MAX_PROC_DEPTH = 2
 MH, OH = 0, 1
 ALL = -1  # cost_mult key meaning "every resource"
+# Random streams. Swings of each hand use streams MH and OH; each ability use draws one block from
+# ABILITY_STREAM; extra targets of a strike use SPLASH_STREAM; proc strikes and extra attacks use
+# NESTED_STREAM. Every attack draws a fixed-size block (hit roll, crit roll, one roll per proc), so
+# branches cloned from one state with the same seed get aligned luck: the n-th main-hand swing or the
+# n-th ability use sees the same numbers whatever happened in between.
+ABILITY_STREAM, SPLASH_STREAM, NESTED_STREAM = 2, 3, 4
+N_STREAMS = 5
 
 
 class Rules:
@@ -92,6 +99,7 @@ class Rules:
         self.targeted = [self._targeted(a, i) for i, a in enumerate(spec.abilities)]
 
         self.procs = spec.procs
+        self.n_rolls = 2 + len(spec.procs)
         self.proc_gain = [[(ri[k], v) for k, v in p.gain.items()] for p in spec.procs]
         self.proc_buff = [bi[p.buff] if p.buff else -1 for p in spec.procs]
         self.proc_debuff = [di[p.debuff] if p.debuff else -1 for p in spec.procs]
@@ -176,16 +184,25 @@ class EventPlan:
         self.reposition, self.reposition_distance = reposition, reposition_distance
         self.wave, self.wave_size, self.add_hp, self.add_party_dps = wave, wave_size, add_hp, add_party_dps
 
-    def sample(self, rng: random.Random, t0: float, t_max: float) -> list[tuple[float, str, tuple]]:
+    def sample(
+        self, rng: random.Random, t0: float, t_max: float, last: dict[str, float] | None = None
+    ) -> list[tuple[float, str, tuple]]:
+        """Events in [t0, t_max). Each kind recurs at uniformly random intervals; `last` holds when each
+        kind last happened (default: the pull at t=0), and the first draw is conditioned on the time
+        already elapsed since then, which a player can see."""
         events: list[tuple[float, str, tuple]] = []
+        last = last or {}
 
         def process(every: tuple[float, float] | None, kind: str, payload) -> None:
             if not every:
                 return
-            t = t0 + rng.uniform(*every)
+            lo, hi = every
+            prev = last.get(kind, 0.0)
+            since = t0 - prev
+            t = prev + rng.uniform(max(lo, since), hi) if since < hi else t0
             while t < t_max:
                 events.append((t, kind, payload()))
-                t += rng.uniform(*every)
+                t += rng.uniform(lo, hi)
 
         process(self.knockback, "knockback", lambda: (rng.uniform(12.0, 18.0),))
         process(self.turn, "turn", lambda: (rng.uniform(*self.turn_duration),))
@@ -207,7 +224,7 @@ class Sim:
         R = rules_for(spec)
         self.spec = spec
         self.R = R
-        self.rng = rng
+        self.reseed(rng.getrandbits(64))
         self.t = 0.0
         self.t_max = t_max
         self.plan = plan or EventPlan()
@@ -236,10 +253,17 @@ class Sim:
         self.buff_stacks = [0] * len(R.buffs)
         self.buff_charges = [0] * len(R.buffs)
         self.damage = 0.0
+        # Expected damage: each strike adds its mean over the hit and crit rolls given the state before
+        # the roll. Same expectation as `damage` with far less noise, so the teacher scores with it.
+        self.ev_damage = 0.0
         self.dmg_by = [0.0] * (R.n_abilities + len(R.procs) + 1)  # abilities, procs, white
         self.done = False
         self.moving = True
+        self.last_event: dict[str, float] = {}  # when each kind of scripted event last happened
         self.log: list[tuple[float, str]] | None = None
+        # (time, ability index, target id) of each successful cast, when enabled: what the game tells
+        # an addon in combat (UNIT_SPELLCAST_SUCCEEDED for the player)
+        self.cast_log: list[tuple[float, int, int]] | None = None
 
     # ------------------------------------------------------------------ setup
 
@@ -257,7 +281,9 @@ class Sim:
         self.events = events
         self.ev_i = 0
 
-    def clone(self) -> Sim:
+    def clone(self, seed: int | None = None) -> Sim:
+        """An independent copy. Without a seed it replays the rolls the original would get; with one it
+        gets fresh combat randomness, as from `reseed`."""
         s = Sim.__new__(Sim)
         s.__dict__.update(self.__dict__)
         s.enemies = [e.clone() for e in self.enemies]
@@ -271,12 +297,26 @@ class Sim:
         s.buff_stacks = list(self.buff_stacks)
         s.buff_charges = list(self.buff_charges)
         s.dmg_by = list(self.dmg_by)
+        s.last_event = dict(self.last_event)
         s.log = None
+        s.cast_log = None
+        if seed is None:
+            s.streams = []
+            for r in self.streams:
+                c = random.Random(0)
+                c.setstate(r.getstate())
+                s.streams.append(c)
+        else:
+            s.reseed(seed)
         return s
+
+    def reseed(self, seed: int) -> None:
+        """Replace all future combat rolls with fresh ones derived from seed."""
+        self.streams = [random.Random(seed * N_STREAMS + i) for i in range(N_STREAMS)]
 
     def resample_future(self, rng: random.Random) -> None:
         """Replace upcoming scripted events with a fresh draw from the scenario's plan."""
-        self.events = self.plan.sample(rng, self.t, self.t_max)
+        self.events = self.plan.sample(rng, self.t, self.t_max, self.last_event)
         self.ev_i = 0
 
     # ------------------------------------------------------------------ queries
@@ -418,10 +458,23 @@ class Sim:
     # ------------------------------------------------------------------ actions
 
     def step(self, opt: tuple[int, int]) -> None:
-        ai, tid = opt
-        if ai == POOL:
+        """Take an option and let time run to the next decision point: the end of the GCD or cast, or
+        for POOL the next swing or resource tick (at most 1 s)."""
+        if opt[0] == POOL:
             wait_to = min(self.swing[MH], self.swing[OH], min(self.next_tick), self.t + 1.0)
             self._run_until(max(wait_to, self.t + 0.05))
+            return
+        self.act(opt)
+        if not self.done:
+            end = max(self.gcd_until, self.cast_until if self.casting >= 0 else 0.0)
+            if end > self.t:
+                self._run_until(end)
+
+    def act(self, opt: tuple[int, int]) -> None:
+        """Start an option without letting time pass: queue a next-swing ability, begin a cast, or use an
+        ability and start its GCD. A real-time front end calls this and runs the clock with `advance`."""
+        ai, tid = opt
+        if ai == POOL:
             return
         a = self.R.abilities[ai]
         if tid >= 0:
@@ -432,7 +485,6 @@ class Sim:
         if a.cast_time > 0:
             self.casting, self.cast_target, self.cast_until = ai, tid, self.t + a.cast_time
             self.gcd_until = self.t + self.R.gcd[ai]
-            self._run_until(max(self.cast_until, self.gcd_until))
             return
         self._use(ai, self.enemy(tid) if tid >= 0 else None)
         self._sweep()
@@ -440,7 +492,10 @@ class Sim:
             return
         if self.R.gcd[ai] > 0:
             self.gcd_until = self.t + self.R.gcd[ai]
-            self._run_until(self.gcd_until)
+
+    def advance(self, t: float) -> None:
+        """Let time run until t (or the end of the fight) without new actions."""
+        self._run_until(t)
 
     def _use(self, ai: int, e: Enemy | None) -> None:
         """Pay for and resolve an ability."""
@@ -449,6 +504,8 @@ class Sim:
         t = self.t
         if self.log is not None:
             self.log.append((t, a.name + (f" -> {e.name}" if e is not None else "")))
+        if self.cast_log is not None:
+            self.cast_log.append((t, ai, e.id if e is not None else -1))
         for r, amt in self.cost_of(ai):
             self.res[r] = max(0.0, self.res[r] - amt)
         if R.has_cost[ai]:
@@ -463,6 +520,7 @@ class Sim:
             self.cd_until[ai] = t + a.cooldown
         if R.group[ai] >= 0:
             self.group_until[R.group[ai]] = t + a.cooldown
+        u = self._rolls(ABILITY_STREAM)
         points = 0.0
         fin = R.finisher[ai]
         if fin >= 0:
@@ -471,7 +529,7 @@ class Sim:
             self.res_target[fin] = -1
         landed = True
         if a.damage is not None:
-            landed = self._strike(ai, a.damage, e, points, ai)
+            landed = self._strike(ai, a.damage, e, points, ai, 0, u)
         if landed:
             hit = [e] if e is not None else []
             if a.aoe:
@@ -491,10 +549,16 @@ class Sim:
         if a.gap_closer and e is not None:
             self.px, self.py = e.x - e.fx * BEHIND_GAP, e.y - e.fy * BEHIND_GAP
         for pi in R.by_trigger.get("ability:" + a.id, ()):
-            self._proc(pi, e, 0)
+            self._proc(pi, e, 0, None, u)
 
-    def _strike(self, src: int, dmg: Damage, e: Enemy | None, points: float, ai: int, depth: int = 0) -> bool:
-        """Resolve a yellow (ability) attack. Returns whether the primary target was hit."""
+    def _rolls(self, stream: int) -> list[float]:
+        r = self.streams[stream].random
+        return [r() for _ in range(self.R.n_rolls)]
+
+    def _strike(self, src: int, dmg: Damage, e: Enemy | None, points: float, ai: int, depth: int = 0,
+                u: list[float] | None = None) -> bool:
+        """Resolve a yellow (ability) attack. Returns whether the primary target was hit. `u` is the
+        primary target's block of rolls; without one it draws from the nested stream."""
         R = self.R
         sp = self.spec
         if dmg.aoe_radius > 0:
@@ -512,27 +576,37 @@ class Sim:
             self.res[r] -= spare
             base += spare * per
         builder = ai >= 0 and R.builds_on_target[ai]
-        rnd = self.rng.random
+        miss, dodge, cm = sp.miss_chance, sp.dodge_chance, sp.crit_multiplier
+        p_hit = max(0.0, 1.0 - miss - dodge)
         primary_hit = False
         for i, x in enumerate(targets):
-            roll = rnd()
-            if roll < sp.miss_chance:
+            if i > 0:
+                b = self._rolls(SPLASH_STREAM)
+            elif u is None:
+                b = self._rolls(NESTED_STREAM)
+            else:
+                b = u
+            crit_p = self.crit_chance(dmg.crit_bonus) if dmg.can_crit else 0.0
+            amount = base * self.damage_mult(x, dmg.school)
+            hp = x.hp if x.hp > 0.0 else 0.0
+            self.ev_damage += p_hit * ((1.0 - crit_p) * min(amount, hp) + crit_p * min(amount * cm, hp))
+            roll = b[0]
+            if roll < miss:
                 continue
-            if roll < sp.miss_chance + sp.dodge_chance:
-                self._fire("dodge", x, depth)
+            if roll < miss + dodge:
+                self._fire("dodge", x, depth, None, b)
                 continue
-            crit = dmg.can_crit and rnd() < self.crit_chance(dmg.crit_bonus)
-            amount = base * (sp.crit_multiplier if crit else 1.0) * self.damage_mult(x, dmg.school)
-            self._deal(x, amount, src, dmg.school)
+            crit = b[1] < crit_p
+            self._deal(x, amount * cm if crit else amount, src, dmg.school)
             if i == 0:
                 primary_hit = True
-            self._fire("yellow_hit", x, depth)
-            self._fire("hit", x, depth)
+            self._fire("yellow_hit", x, depth, None, b)
+            self._fire("hit", x, depth, None, b)
             if crit:
-                self._fire("crit", x, depth)
-                self._fire("yellow_crit", x, depth)
+                self._fire("crit", x, depth, None, b)
+                self._fire("yellow_crit", x, depth, None, b)
                 if builder and i == 0:
-                    self._fire("builder_crit", x, depth)
+                    self._fire("builder_crit", x, depth, None, b)
         return primary_hit or dmg.aoe_radius > 0
 
     def _white(self, hand: int, depth: int = 0) -> None:
@@ -550,6 +624,7 @@ class Sim:
                     if self.buff_charges[bi] <= 0:
                         self.buff_until[bi] = self.t
             self.swing[hand] = self.t + weapon.speed / self.haste()
+        u = self._rolls(hand if depth == 0 else NESTED_STREAM)
         if hand == MH and self.queued >= 0 and depth == 0:
             ai, self.queued = self.queued, -1
             if self.affordable(ai):
@@ -558,43 +633,57 @@ class Sim:
                     self.res[r] = max(0.0, self.res[r] - amt)
                 if self.log is not None:
                     self.log.append((self.t, a.name + f" -> {tgt.name}"))
-                self._strike(ai, a.damage, tgt, 0.0, ai)
+                if self.cast_log is not None:
+                    self.cast_log.append((self.t, ai, tgt.id))
+                self._strike(ai, a.damage, tgt, 0.0, ai, 0, u)
                 return
-        rnd = self.rng.random
-        roll = rnd()
         miss = sp.miss_chance + (sp.dual_wield_miss if sp.off_hand else 0.0)
+        dodge, glance_p, cm, gm = sp.dodge_chance, sp.glancing_chance, sp.crit_multiplier, sp.glancing_multiplier
+        crit_p = self.crit_chance()
+        amount = weapon.damage * self.damage_mult(tgt, "physical")
+        hp = tgt.hp if tgt.hp > 0.0 else 0.0
+        regular = max(0.0, 1.0 - miss - dodge - glance_p)
+        self.ev_damage += glance_p * min(amount * gm, hp) + regular * (
+            (1.0 - crit_p) * min(amount, hp) + crit_p * min(amount * cm, hp))
+        roll = u[0]
         if roll < miss:
             return
         roll -= miss
-        if roll < sp.dodge_chance:
-            self._fire("dodge", tgt, depth)
+        if roll < dodge:
+            self._fire("dodge", tgt, depth, None, u)
             return
-        roll -= sp.dodge_chance
-        glance = roll < sp.glancing_chance
-        crit = not glance and rnd() < self.crit_chance()
-        amount = weapon.damage * (sp.glancing_multiplier if glance else sp.crit_multiplier if crit else 1.0)
-        amount *= self.damage_mult(tgt, "physical")
+        roll -= dodge
+        glance = roll < glance_p
+        crit = not glance and u[1] < crit_p
+        if glance:
+            amount *= gm
+        elif crit:
+            amount *= cm
         self._deal(tgt, amount, len(self.dmg_by) - 1, "physical")
         for r, per in R.white_gain:
             self.res[r] = min(R.res[r].max, self.res[r] + amount * per)
-        self._fire("white_hit", tgt, depth, weapon.speed)
-        self._fire("hit", tgt, depth, weapon.speed)
+        self._fire("white_hit", tgt, depth, weapon.speed, u)
+        self._fire("hit", tgt, depth, weapon.speed, u)
         if crit:
-            self._fire("crit", tgt, depth, weapon.speed)
-            self._fire("white_crit", tgt, depth, weapon.speed)
+            self._fire("crit", tgt, depth, weapon.speed, u)
+            self._fire("white_crit", tgt, depth, weapon.speed, u)
 
-    def _fire(self, trigger: str, e: Enemy, depth: int, speed: float | None = None) -> None:
+    def _fire(self, trigger: str, e: Enemy, depth: int, speed: float | None = None,
+              u: list[float] | None = None) -> None:
         for pi in self.R.by_trigger.get(trigger, ()):
-            self._proc(pi, e, depth, speed)
+            self._proc(pi, e, depth, speed, u)
 
-    def _proc(self, pi: int, e: Enemy | None, depth: int, speed: float | None = None) -> None:
+    def _proc(self, pi: int, e: Enemy | None, depth: int, speed: float | None = None,
+              u: list[float] | None = None) -> None:
         R = self.R
         p = R.procs[pi]
         if R.proc_req[pi] >= 0 and not self.buff_until[R.proc_req[pi]] > self.t:
             return
         chance = p.chance if not p.ppm else p.ppm * (speed or self.spec.main_hand.speed) / 60.0
-        if chance < 1.0 and self.rng.random() >= chance:
-            return
+        if chance < 1.0:
+            roll = u[2 + pi] if u is not None else self.streams[NESTED_STREAM].random()
+            if roll >= chance:
+                return
         if R.proc_buff[pi] >= 0:
             self._apply_buff(R.proc_buff[pi], None)
         for r, amt in R.proc_gain[pi]:
@@ -766,7 +855,9 @@ class Sim:
                 continue
             for key, (nt, left, dmg, iv, school) in list(e.dots.items()):
                 if nt <= t:
-                    self._deal(e, dmg * self.damage_mult(e, school), key, school)
+                    amount = dmg * self.damage_mult(e, school)
+                    self.ev_damage += min(amount, e.hp) if e.hp > 0.0 else 0.0
+                    self._deal(e, amount, key, school)
                     if left > 1:
                         e.dots[key] = (nt + iv, left - 1, dmg, iv, school)
                     else:
@@ -786,6 +877,7 @@ class Sim:
             self._event(kind, payload)
 
     def _event(self, kind: str, payload: tuple) -> None:
+        self.last_event[kind] = self.t
         boss = next((e for e in self.enemies if e.boss), None) or (self.enemies[0] if self.enemies else None)
         if kind == "knockback" and boss is not None:
             dx, dy = self.px - boss.x, self.py - boss.y

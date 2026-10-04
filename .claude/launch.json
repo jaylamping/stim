@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "trainer",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "-m", "stim.trainer", "--model", "runs/gen0/student.pt"],
+      "port": 8765
+    }
+  ]
+}

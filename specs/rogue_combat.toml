@@ -105,8 +105,8 @@ off_gcd = true
 gain = { energy = 100 }
 
 [teacher]
-reference_dps = 800
-resource_value = { energy = 12, combo_points = 120 }
+reference_dps = 450
+resource_value = { energy = 18, combo_points = 230 }
 
 [[apl]]
 use = "slice_and_dice"

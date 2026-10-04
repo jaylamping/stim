@@ -115,8 +115,8 @@ off_gcd = true
 gain = { rage = 20 }
 
 [teacher]
-reference_dps = 900
-resource_value = { rage = 15 }
+reference_dps = 400
+resource_value = { rage = 22 }
 
 [[apl]]
 use = "battle_shout"

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+import weakref
+
 from .sim import POOL, Enemy, Sim
 
 # Rough share of a melee spec's damage by school, used to value "damage taken" debuffs.
@@ -71,6 +74,27 @@ def resource_rate(sim: Sim, r: int) -> float:
     return 0.0
 
 
+def buff_rate(sim: Sim, bi: int, costs: bool = True) -> float:
+    """Damage-equivalent value per second of a buff being up (costs=False leaves out cost reductions)."""
+    b = sim.R.buffs[bi]
+    ref = sim.spec.reference_dps
+    v = ref * b.damage_mult
+    v += ref * WHITE_SHARE * b.haste
+    v += ref * b.crit_bonus * (sim.spec.crit_multiplier - 1.0)
+    values = sim.spec.resource_value
+    if costs:
+        for k, m in b.cost_mult.items():
+            rids = range(sim.R.n_res) if k == "all" else [sim.R.res_index[k]]
+            for r in rids:
+                v += resource_rate(sim, r) * (1.0 - m) * values.get(sim.R.res_ids[r], 0.0)
+    for k, m in b.regen_mult.items():
+        r = sim.R.res_index[k]
+        v += resource_rate(sim, r) * (m - 1.0) * values.get(k, 0.0)
+    if b.cleave_targets and len(sim.enemies) > 1:
+        v += ref * 0.6 * min(b.cleave_targets, len(sim.enemies) - 1)
+    return v
+
+
 def buff_value(sim: Sim, bi: int, points: float | None) -> float:
     b = sim.R.buffs[bi]
     dur = b.duration
@@ -78,21 +102,48 @@ def buff_value(sim: Sim, bi: int, points: float | None) -> float:
         dur = b.duration_by_points[min(int(points), len(b.duration_by_points) - 1)]
     remaining = max(0.0, sim.buff_until[bi] - sim.t)
     cover = max(0.0, dur - remaining)
-    ref = sim.spec.reference_dps
-    v = ref * b.damage_mult * cover
-    v += ref * WHITE_SHARE * b.haste * cover
-    v += ref * b.crit_bonus * (sim.spec.crit_multiplier - 1.0) * cover
-    values = sim.spec.resource_value
-    for k, m in b.cost_mult.items():
-        rids = range(sim.R.n_res) if k == "all" else [sim.R.res_index[k]]
-        for r in rids:
-            v += resource_rate(sim, r) * (1.0 - m) * cover * values.get(sim.R.res_ids[r], 0.0)
-    for k, m in b.regen_mult.items():
-        r = sim.R.res_index[k]
-        v += resource_rate(sim, r) * (m - 1.0) * cover * values.get(k, 0.0)
-    if b.cleave_targets and len(sim.enemies) > 1:
-        v += ref * 0.6 * min(b.cleave_targets, len(sim.enemies) - 1) * cover
-    return v
+    return buff_rate(sim, bi) * cover
+
+
+_upkeep_cache: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def aura_upkeep(sim: Sim) -> tuple[list[float], list[float]]:
+    """(buffs, debuffs): the cheapest cost per second, in damage, of keeping each aura up by reapplying
+    it: resources and points spent at the spec's exchange rates. GCD time counts as free, since melee
+    rotations are resource-bound and pool through spare GCDs. Infinite for auras no ability can keep
+    up (procs, or a cooldown at least as long as the aura)."""
+    R = sim.R
+    cached = _upkeep_cache.get(R)
+    if cached is not None:
+        return cached
+    sp = sim.spec
+    values = sp.resource_value
+    buffs = [math.inf] * len(R.buffs)
+    debuffs = [math.inf] * len(R.debuffs)
+    for ai, a in enumerate(R.abilities):
+        for idx, auras, out in ((R.buff_of[ai], R.buffs, buffs), (R.debuff_of[ai], R.debuffs, debuffs)):
+            if idx < 0:
+                continue
+            aura = auras[idx]
+            base = sum(amt * values.get(R.res_ids[r], 0.0) for r, amt in R.cost[ai])
+            fin = R.finisher[ai]
+            if aura.duration_by_points and fin >= 0:
+                top = min(len(aura.duration_by_points) - 1, int(R.res[fin].max))
+                ways = [(aura.duration_by_points[p], p * values.get(R.res_ids[fin], 0.0)) for p in range(1, top + 1)]
+            else:
+                ways = [(aura.duration, 0.0)]
+            for dur, extra in ways:
+                if dur > a.cooldown:
+                    out[idx] = min(out[idx], (base + extra) / dur)
+    _upkeep_cache[R] = (buffs, debuffs)
+    return buffs, debuffs
+
+
+def debuff_rate(sim: Sim, di: int, stacks: int) -> float:
+    """Damage-equivalent value per second of a debuff with this many stacks on one enemy."""
+    per_stack = sum(v * SCHOOL_SHARE.get(s, 0.1) for s, v in sim.R.debuffs[di].damage_taken.items())
+    return sim.spec.reference_dps * per_stack * stacks
 
 
 def debuff_value(sim: Sim, di: int, e: Enemy) -> float:
@@ -101,11 +152,9 @@ def debuff_value(sim: Sim, di: int, e: Enemy) -> float:
     remaining = cur[0] - sim.t if cur else 0.0
     stacks = cur[1] if cur else 0
     span = min(d.duration, e.time_to_die)
-    per_stack = sum(v * SCHOOL_SHARE.get(s, 0.1) for s, v in d.damage_taken.items())
-    ref = sim.spec.reference_dps
     if stacks < d.max_stacks:
-        return ref * per_stack * (stacks * max(0.0, span - remaining) + span)
-    return ref * per_stack * d.max_stacks * max(0.0, span - remaining)
+        return debuff_rate(sim, di, 1) * (stacks * max(0.0, span - remaining) + span)
+    return debuff_rate(sim, di, d.max_stacks) * max(0.0, span - remaining)
 
 
 def option_value(sim: Sim, opt: tuple[int, int]) -> float:

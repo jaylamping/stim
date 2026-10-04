@@ -9,14 +9,16 @@ strategy is learned.
 
 The engine is class-agnostic: each class/spec is a TOML file in `specs/` that composes generic
 mechanics (resources, swings, procs, auras, DoTs, positioning). It ships with Feral Druid (the WoW
-Forever beta kit), Combat Rogue, and Fury Warrior. All numbers are placeholders for now.
+Forever beta kit after Blizzard's Oct 1 changes), Combat Rogue, and Fury Warrior. Spell numbers
+come from datamined beta client data where known; the rest are placeholders.
 
-## Why it runs outside the game
+## In the game: StimCoach
 
-WoW Forever ships Midnight's addon restrictions. In combat, health, auras, and even combo points
-come back as secret values that addons can display but can't compute with. So stim is a practice
-trainer (and later a post-pull coach built on combat logs). It never reads the game client or sends
-input to it.
+[`addon/StimCoach`](addon/StimCoach) flashes your next three spells next to your character (Feral
+for now). WoW Forever hides most combat values from addons ("secret values"), so StimCoach works
+only from what the game allows, mainly your own casts and resource values from before the pull.
+For energy, it precomputes a recommendation per energy band and lets the game show the right one.
+It never reads the client any other way, and every button press is yours.
 
 ## Quickstart
 
@@ -26,7 +28,17 @@ uv run pytest
 uv run python scripts/baselines.py
 ```
 
+The full pipeline (teacher data, training, evaluation, addon export) is in [CLAUDE.md](CLAUDE.md)
+and [addon/StimCoach/README.md](addon/StimCoach/README.md).
+
 ## Status
 
-The combat engine, specs, encounter generators, and baseline policies are done. The teacher, the
-model, training, and the practice trainer are next. See [HANDOFF.md](HANDOFF.md).
+Done:
+- the engine, specs, and encounters
+- the rollout teacher, the Jev-style model, and expert iteration
+- the StimCoach addon (Feral)
+- a practice trainer, shelved for now
+
+Students beat the hand-written priority lists in most fights. StimCoach plays about even with a
+full-information priority list in the sim while seeing only what Forever allows; it's untested in
+the real client. See [HANDOFF.md](HANDOFF.md).

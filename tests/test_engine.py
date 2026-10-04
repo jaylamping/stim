@@ -80,11 +80,11 @@ def test_combo_points_live_on_the_target():
     second = sim.add_enemy("Second", 1.0, TANK_GAP, 1e7, 0.0)
     pool_until(sim, 0.5)
     first = sim.enemies[0]
-    cp, bite = sim.R.res_index["combo_points"], spec.ability_index("primal_bite")
-    sim.step((bite, first.id))
+    cp, claw = sim.R.res_index["combo_points"], spec.ability_index("claw")
+    sim.step((claw, first.id))
     assert (sim.res[cp], sim.res_target[cp]) == (1.0, first.id)
     sim.res[sim.R.res_index["energy"]] = 100.0
-    sim.step((bite, second.id))
+    sim.step((claw, second.id))
     assert (sim.res[cp], sim.res_target[cp]) == (1.0, second.id)
     assert ("rip", second.id) in legal_ids(sim) and ("rip", first.id) not in legal_ids(sim)
 
@@ -97,7 +97,7 @@ def test_finisher_scales_with_points_and_consumes_them():
     sim.res[cp], sim.res_target[cp] = 5.0, boss.id
     sim.step((rip, boss.id))
     assert sim.res[cp] == 0.0
-    assert boss.dots[rip][2] == pytest.approx(30 + 34 * 5)
+    assert boss.dots[rip][2] == pytest.approx(15 + 25.5 * 5)
 
 
 def test_shred_needs_behind_and_turns_break_it():
@@ -107,7 +107,7 @@ def test_shred_needs_behind_and_turns_break_it():
     assert ("shred", boss.id) in legal_ids(sim)
     boss.turn_until = sim.t + 3.0
     ids = legal_ids(sim)
-    assert ("shred", boss.id) not in ids and ("primal_bite", boss.id) in ids
+    assert ("shred", boss.id) not in ids and ("claw", boss.id) in ids
 
 
 def test_gap_closer_lands_behind_the_target():
@@ -141,8 +141,7 @@ def test_clone_is_independent():
     sim = make_scenario(spec, "trash", random.Random(5))
     pool_until(sim, 2.0)
     before = (sim.t, sim.damage, [e.hp for e in sim.enemies], list(sim.res))
-    c = sim.clone()
-    c.rng = random.Random(9)
+    c = sim.clone(seed=9)
     policy = GreedyPolicy()
     while not c.done:
         c.step(policy(c, c.legal_options()))
@@ -167,6 +166,6 @@ def test_bad_spec_fields_are_rejected(tmp_path):
 
     src = (load_spec.__globals__["SPECS_DIR"] / "feral.toml").read_text()
     bad = tmp_path / "bad.toml"
-    bad.write_text(src.replace("weapon_coeff", "weapon_cof").replace("weapon = 2.25", "wepon = 2.25"))
+    bad.write_text(src.replace("weapon = 1.55", "wepon = 1.55"))
     with pytest.raises(SpecError, match="wepon"):
         load_spec(bad)

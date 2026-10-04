@@ -79,6 +79,39 @@ def apl_namespace(sim: Sim) -> dict:
     return ns
 
 
+class EpsilonPolicy:
+    """Follows a policy but picks a uniformly random legal option with probability epsilon, so the
+    states it visits include the mistakes a person makes."""
+
+    def __init__(self, policy, epsilon: float, rng: random.Random):
+        self.policy, self.epsilon, self.rng = policy, epsilon, rng
+        self.name = f"{policy.name}+eps{epsilon:g}"
+
+    def __call__(self, sim: Sim, opts: list[Option]) -> Option:
+        if self.epsilon > 0 and self.rng.random() < self.epsilon:
+            return self.rng.choice(opts)
+        return self.policy(sim, opts)
+
+
+def best_baseline(spec, episodes: int = 8, seed: int = 0):
+    """The better of the greedy and priority-list policies for this spec, by mean DPS over every
+    scenario. Teachers roll out with it until a trained student replaces it."""
+    from .scenarios import SCENARIOS, make_scenario
+
+    best, best_dps = None, float("-inf")
+    for policy in (GreedyPolicy(), AplPolicy(spec)):
+        total = 0.0
+        for kind in SCENARIOS:
+            for ep in range(episodes):
+                sim = make_scenario(spec, kind, random.Random(seed + ep))
+                while not sim.done:
+                    sim.step(policy(sim, sim.legal_options()))
+                total += sim.damage / sim.t
+        if total > best_dps:
+            best, best_dps = policy, total
+    return best
+
+
 class AplPolicy:
     """A Hekili-style priority list from the spec's [[apl]] entries: the first usable entry wins."""
 

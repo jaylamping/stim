@@ -2,20 +2,28 @@
 name = "Druid"
 spec = "Feral"
 notes = """
-Kit follows WoW Forever beta reports as of Oct 1-4, 2026: Tiger's Fury removed, Mangle renamed
-Primal Bite (no debuff), powershifting formalized as Shifting Power, Berserk as the 31-point
-talent, cat Feral Charge leaps behind the target, Primal Fury adds a combo point on builder crits.
-Every number is a placeholder: replace with in-game tooltip values."""
+Cat kit after Blizzard's Oct 1 beta changes (HANDOFF.md research items 5-7): Tiger's Fury and King of
+the Jungle are gone, and Shifting Power (+40 energy for 55% of base mana, 16 s cooldown) replaces
+powershifting. Claw is the builder that needs no positioning; Primal Bite is bear-only and isn't here.
+Spell numbers are the level-60 ranks from the beta client where known (MythicSim's datamining),
+assuming Ferocity 5/5 (5 energy off Claw and Rake), Shredding Attacks 2/2 (12 off Shred), Primal Fury
+2/2, and Berserk. Attack power scaling isn't modeled; weapon damage stands in for it. Berserk's cat
+effect (halved energy costs) and Thistle Tea in forms are unverified assumptions.
+Ability names match the game's spell names: the in-game addon recognizes your casts by them."""
 
 [combat]
 gcd = 1.0
-crit_chance = 0.30
+crit_chance = 0.35
 crit_multiplier = 2.0
 melee_range = 5.0
 run_speed = 7.0
+miss_chance = 0.03
+dodge_chance = 0.015
+glancing_chance = 0.40
+glancing_multiplier = 0.70
 
 [weapons]
-main_hand = { damage = 180, speed = 1.0 }
+main_hand = { damage = 150, speed = 1.0 }  # cat form swings every 1.0 s; weapon DPS carries into forms
 
 [resources.energy]
 kind = "energy"
@@ -29,8 +37,8 @@ on_target = true
 
 [resources.mana]
 kind = "mana"
-max = 4000
-regen_per_sec = 8
+max = 5000
+regen_per_sec = 4
 
 [buffs.clearcasting]
 duration = 15
@@ -42,9 +50,9 @@ duration = 15
 cost_mult = { energy = 0.5 }
 
 [debuffs.faerie_fire]
-name = "Faerie Fire (Feral)"
+name = "Faerie Fire"
 duration = 40
-damage_taken = { physical = 0.05 }
+damage_taken = { physical = 0.05 }  # stands in for its armor reduction
 
 [[procs]]
 id = "omen_of_clarity"
@@ -63,42 +71,42 @@ id = "shred"
 key = "1"
 cost = { energy = 48 }
 gain = { combo_points = 1 }
-damage = { weapon = 2.25, flat = 180 }
+damage = { weapon = 1.55, flat = 180 }
 requires = { behind = true }
 
 [[abilities]]
-id = "primal_bite"
+id = "claw"
 key = "2"
 cost = { energy = 40 }
 gain = { combo_points = 1 }
-damage = { weapon = 1.6, flat = 110 }
+damage = { weapon = 1.10, flat = 115 }
 
 [[abilities]]
 id = "rake"
 key = "3"
 cost = { energy = 35 }
 gain = { combo_points = 1 }
-damage = { flat = 100 }
-dot = { ticks = 3, interval = 3.0, per_tick = 140 }
+damage = { flat = 61 }
+dot = { ticks = 3, interval = 3.0, per_tick = 34 }
 
 [[abilities]]
 id = "rip"
 key = "4"
 cost = { energy = 30 }
 finisher = "combo_points"
-dot = { ticks = 6, interval = 2.0, per_tick = 30, per_tick_per_point = 34 }
+dot = { ticks = 6, interval = 2.0, per_tick = 15, per_tick_per_point = 25.5 }
 
 [[abilities]]
 id = "ferocious_bite"
 key = "5"
 cost = { energy = 35 }
 finisher = "combo_points"
-damage = { by_points = [0, 200, 380, 560, 740, 920] }
-extra = { resource = "energy", max = 30, damage_per = 2.7 }
+damage = { by_points = [0, 229, 376, 523, 670, 817] }
+extra = { resource = "energy", max = 100, damage_per = 2.7 }
 
 [[abilities]]
 id = "faerie_fire"
-name = "Faerie Fire (Feral)"
+name = "Faerie Fire"
 key = "q"
 cooldown = 6
 debuff = "faerie_fire"
@@ -107,21 +115,21 @@ debuff = "faerie_fire"
 id = "feral_charge"
 key = "e"
 cost = { energy = 10 }
-cooldown = 15
+cooldown = 30
 gap_closer = true
 range = [8, 25]
 
 [[abilities]]
 id = "shifting_power"
 key = "r"
-cost = { mana = 300 }
-gcd = 1.5
-set = { energy = 60 }
+cost = { mana = 684 }  # 55% of a level-60 druid's base mana
+cooldown = 16
+gain = { energy = 40 }
 
 [[abilities]]
 id = "berserk"
 key = "f"
-cooldown = 120
+cooldown = 180
 off_gcd = true
 buff = "berserk"
 
@@ -134,10 +142,10 @@ gain = { energy = 100 }
 
 # Exchange rates the teacher uses for resources still unspent when a rollout ends.
 [teacher]
-reference_dps = 700
-resource_value = { energy = 12, combo_points = 140, mana = 1.5 }
+reference_dps = 450
+resource_value = { energy = 12, combo_points = 65, mana = 0 }
 
-# A Hekili-style priority list, adapted from Forever beta guides. It is only a baseline to beat.
+# A Hekili-style priority list after the Oct 1 guides. It is only a baseline to beat.
 [[apl]]
 use = "faerie_fire"
 if = "not debuff.faerie_fire.up"
@@ -151,15 +159,11 @@ if = "buff.clearcasting.up"
 
 [[apl]]
 use = "shifting_power"
-if = "energy < 40"
+if = "energy < 60"
 
 [[apl]]
 use = "rip"
 if = "combo_points >= 5 and dot.rip.remains < 1 and target.time_to_die > 8"
-
-[[apl]]
-use = "rake"
-if = "dot.rake.remains < 1 and target.time_to_die > 6"
 
 [[apl]]
 use = "ferocious_bite"
@@ -169,7 +173,7 @@ if = "combo_points >= 5 and (dot.rip.remains > 6 or target.time_to_die < 8)"
 use = "shred"
 
 [[apl]]
-use = "primal_bite"
+use = "claw"
 if = "not behind"
 
 [[apl]]

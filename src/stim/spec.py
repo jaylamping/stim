@@ -183,6 +183,7 @@ class Spec:
     def randomized(self, rng: random.Random, strength: float = 1.0) -> Spec:
         """A copy with perturbed tuning, so the model learns to read the numbers instead of memorizing them."""
         s = copy.deepcopy(self)
+        s.__dict__.pop("_rules", None)  # compiled rules snapshot costs; rebuild them from the new numbers
 
         def j(lo: float, hi: float) -> float:
             return 1.0 + (rng.uniform(lo, hi) - 1.0) * strength
