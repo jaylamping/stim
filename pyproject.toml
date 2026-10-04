@@ -1,0 +1,21 @@
+[project]
+name = "stim"
+version = "0.1.0"
+description = "Simulation-trained rotation brain for WoW: a Jev-style decision model and a practice trainer"
+authors = [
+    { name = "Joey Lamping", email = "35737718+jaylamping@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.5.3",
+    "torch>=2.14.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
