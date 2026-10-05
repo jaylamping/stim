@@ -1,4 +1,4 @@
-"""Export a spec's rules and a trained addon policy as the StimCoach addon's Data.lua.
+"""Export a spec's rules and a trained addon policy as the Stim addon's Data.lua.
 
 Everything the Lua tracker needs comes from the same compiled rules the Python tracker uses, so the two
 can't disagree about a cost or a cooldown. Lua indices are 1-based; Python's are 0-based."""
@@ -112,15 +112,16 @@ def data_lua(spec: Spec, net: AddonNet) -> str:
 def toc(spec: Spec) -> str:
     return "\n".join([
         f"## Interface: {INTERFACE}",
-        "## Title: StimCoach",
+        "## Title: Stim",
         f"## Notes: Flashes your next spells ({spec.name}), learned by simulation. Every press is yours.",
         "## Author: stim",
         "## Version: 0.1.0",
-        "## SavedVariables: StimCoachDB",
+        "## SavedVariables: StimDB",
         "",
         "Data.lua",
         "Tracker.lua",
         "Policy.lua",
+        "Config.lua",
         "Core.lua",
         "",
     ])
@@ -135,5 +136,5 @@ def write_addon(spec_name: str, model_path: str | Path, out: Path) -> Path:
         raise ValueError(f"{model_path} was trained on a different feature layout; retrain it")
     out.mkdir(parents=True, exist_ok=True)
     (out / "Data.lua").write_text(data_lua(spec, net))
-    (out / "StimCoach.toc").write_text(toc(spec))
+    (out / "Stim.toc").write_text(toc(spec))
     return out / "Data.lua"

@@ -1,4 +1,4 @@
--- What StimCoach knows in combat, rebuilt from your own casts. This mirrors src/stim/addon/tracker.py
+-- What Stim knows in combat, rebuilt from your own casts. This mirrors src/stim/addon/tracker.py
 -- operation for operation; tests/test_addon.py replays the same events through both and compares.
 -- Indices are 1-based here (Python's are 0-based); "wait" is action #abilities + 1.
 

@@ -1,20 +1,20 @@
--- StimCoach: flashes the next few spells around your character. Every press is yours.
+-- Stim: flashes the next few spells around your character. Every press is yours.
 --
 -- In combat, Forever hides energy, combo points, buffs, cooldown values and target health from addons.
--- StimCoach works only from what the game allows: your own casts, target changes, range checks, the
+-- Stim works only from what the game allows: your own casts, target changes, range checks, the
 -- clock, and resource values read before the pull. It precomputes a recommendation for each energy
 -- band, and the game itself shows the one that matches your real energy (UnitPowerPercent with a step
 -- curve, drawn as the frame's alpha), so the addon never reads the hidden value.
 
 local addonName, ns = ...
-local data, Tracker, Policy = ns.data, ns.Tracker, ns.Policy
+local data, Tracker, Policy, Config = ns.data, ns.Tracker, ns.Policy, ns.Config
 
-local QUEUE = 3            -- spells shown
+local QUEUE = (Config and Config.QUEUE) or 3            -- spells shown
 local REFRESH = 0.2        -- seconds between recomputing the queues
 local GATE_REFRESH = 0.05  -- seconds between gate updates
 local SIZE, SMALL, GAP = 52, 38, 6
 
-local defaults = { point = "CENTER", x = 0, y = -140, scale = 1, locked = true, count = QUEUE, shown = true }
+local defaults = (Config and Config.DEFAULTS) or { point = "CENTER", x = 0, y = -140, scale = 1, locked = true, count = QUEUE, shown = true, pulse = true, desatDelay = 0.3 }
 local db
 
 local tracker = Tracker.new(data)
@@ -129,7 +129,7 @@ local function bandCurve(lo, hi)
 end
 
 local function buildDisplay()
-  root = CreateFrame("Frame", "StimCoachFrame", UIParent)
+  root = CreateFrame("Frame", "StimFrame", UIParent)
   root:SetSize(SIZE + (QUEUE - 1) * (SMALL + GAP), SIZE)
   root:SetPoint(db.point, UIParent, db.point, db.x, db.y)
   root:SetScale(db.scale)
@@ -164,9 +164,9 @@ local function showQueue(strip, queue)
       local tex = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(a.name)
       icon.tex:SetTexture(tex or 134400)
       -- desaturate the first icon while it's still a wait away
-      if icon.tex.SetDesaturated then icon.tex:SetDesaturated(k == 1 and entry[2] > 0.3) end
+      if icon.tex.SetDesaturated then icon.tex:SetDesaturated(k == 1 and entry[2] > (db.desatDelay or 0.3)) end
       icon:Show()
-      if icon.pulse and not icon.pulse:IsPlaying() then icon.pulse:Play() end
+      if db.pulse ~= false and icon.pulse and not icon.pulse:IsPlaying() then icon.pulse:Play() end
     else
       icon:Hide()
     end
@@ -206,6 +206,81 @@ local function refreshGates()
   end
 end
 
+---------------------------------------------------------------------- options
+
+local optionsPanel
+local function openPanel()
+  if not optionsPanel then return end
+  pcall(Settings.OpenToCategory, optionsPanel)
+  pcall(InterfaceOptionsFrame_OpenToCategory, optionsPanel)
+end
+
+-- ElvUI-style panel, rendered lazily. Every widget call is guarded: headless
+-- tests stub CreateFrame with no widget methods, and old clients lack Settings.
+local function buildOptions()
+  local ok, panel = pcall(CreateFrame, "Frame", "StimOptions", UIParent)
+  if not ok or not panel then return end
+  optionsPanel = panel
+  pcall(function()
+    panel.name = "Stim"
+    if panel.SetAllPoints then panel:SetAllPoints() end
+    local title = panel.CreateFontString and panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    if title then title:SetPoint("TOPLEFT", 16, -16); title:SetText("Stim (" .. (data.title or "") .. ")") end
+    local y = -48
+    for _, opt in ipairs(Config.schema()) do
+      if opt.type == "toggle" then
+        local cb = panel.CreateCheckButton and panel:CreateCheckButton("StimOpt" .. opt.key)
+        if cb then
+          cb:SetPoint("TOPLEFT", 16, y)
+          if cb.SetChecked then cb:SetChecked(db[opt.key] ~= false) end
+          if cb.SetScript then cb:SetScript("OnClick", function(self)
+            db[opt.key] = (self.GetChecked and self:GetChecked()) and true or false
+            refreshQueues()
+          end) end
+          local fs = panel.CreateFontString and panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+          if fs then fs:SetPoint("LEFT", cb, "RIGHT", 8, 0); fs:SetText(opt.label) end
+          y = y - 28
+        end
+      elseif opt.type == "range" then
+        local sl = panel.CreateSlider and panel:CreateSlider("StimOpt" .. opt.key)
+        if sl then
+          sl:SetPoint("TOPLEFT", 16, y)
+          if sl.SetMinMaxValues then sl:SetMinMaxValues(opt.min, opt.max) end
+          if sl.SetValueStep then sl:SetValueStep(opt.step) end
+          if sl.SetValue then sl:SetValue(db[opt.key]) end
+          if sl.SetScript then sl:SetScript("OnValueChanged", function(_, v)
+            if opt.key == "scale" then db.scale = v; root:SetScale(v)
+            elseif opt.key == "count" then db.count = math.max(1, math.min(QUEUE, math.floor(v + 0.5)))
+            elseif opt.key == "desatDelay" then db.desatDelay = v end
+            refreshQueues()
+          end) end
+          y = y - 40
+        else
+          y = y - 28
+        end
+      end
+    end
+    local btn = panel.CreateButton and panel:CreateButton("StimOptReset")
+    if btn then
+      btn:SetPoint("TOPLEFT", 16, y); btn:SetText("Reset")
+      if btn.SetScript then btn:SetScript("OnClick", function()
+        Config.ensure(db)
+        for k, v in pairs(Config.DEFAULTS) do db[k] = v end
+        root:ClearAllPoints(); root:SetPoint(db.point, UIParent, db.point, db.x, db.y); root:SetScale(db.scale)
+        refreshQueues()
+      end) end
+    end
+  end)
+  pcall(function()
+    if Settings and Settings.RegisterCanvasLayoutCategory then
+      local cat = Settings.RegisterCanvasLayoutCategory(panel, panel.name or "Stim")
+      if Settings.RegisterAddOnCategory then Settings.RegisterAddOnCategory(cat) end
+    elseif InterfaceOptions_AddCategory then
+      InterfaceOptions_AddCategory(panel)
+    end
+  end)
+end
+
 ---------------------------------------------------------------------- events
 
 local frame = CreateFrame("Frame")
@@ -220,12 +295,12 @@ local handlers = {}
 
 function handlers.ADDON_LOADED(name)
   if name ~= addonName then return end
-  StimCoachDB = StimCoachDB or {}
-  for k, v in pairs(defaults) do if StimCoachDB[k] == nil then StimCoachDB[k] = v end end
-  db = StimCoachDB
+  StimDB = StimDB or {}
+  db = Config.ensure(StimDB)
   local _, class = UnitClass("player")
   disabled = data.class_token ~= "" and class ~= data.class_token
   buildDisplay()
+  buildOptions()
   readValues()
 end
 
@@ -279,25 +354,16 @@ end)
 
 ---------------------------------------------------------------------- /stim
 
-SLASH_STIMCOACH1 = "/stim"
-SlashCmdList.STIMCOACH = function(msg)
-  local cmd, arg = (msg or ""):match("^(%S*)%s*(.-)$")
-  cmd = cmd:lower()
-  if cmd == "unlock" then
-    db.locked = false; root:EnableMouse(true); print("StimCoach: drag the icons, then /stim lock")
-  elseif cmd == "lock" then
-    db.locked = true; root:EnableMouse(false)
-  elseif cmd == "scale" and tonumber(arg) then
-    db.scale = tonumber(arg); root:SetScale(db.scale)
-  elseif cmd == "count" and tonumber(arg) then
-    db.count = math.max(1, math.min(QUEUE, math.floor(tonumber(arg))))
-  elseif cmd == "toggle" then
-    db.shown = not db.shown
-  elseif cmd == "reset" then
-    for k, v in pairs(defaults) do db[k] = v end
-    root:ClearAllPoints(); root:SetPoint(db.point, UIParent, db.point, db.x, db.y); root:SetScale(db.scale)
-  else
-    print("StimCoach (" .. data.title .. "): /stim unlock | lock | scale <n> | count <1-" .. QUEUE .. "> | toggle | reset")
+SLASH_STIM1 = "/stim"
+SlashCmdList.STIM = function(msg)
+  if not db then return end
+  local cmd, arg = Config.parse(msg)
+  local line = Config.apply(db, cmd, arg, { openPanel = openPanel })
+  if root then
+    if cmd == "unlock" or cmd == "lock" then root:EnableMouse(not db.locked)
+    elseif cmd == "scale" then root:SetScale(db.scale)
+    elseif cmd == "reset" then root:ClearAllPoints(); root:SetPoint(db.point, UIParent, db.point, db.x, db.y); root:SetScale(db.scale) end
   end
+  if line and print then print(line) end
   refreshQueues()
 end

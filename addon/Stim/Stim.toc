@@ -1,11 +1,12 @@
 ## Interface: 16001
-## Title: StimCoach
+## Title: Stim
 ## Notes: Flashes your next spells (Feral Druid), learned by simulation. Every press is yours.
 ## Author: stim
 ## Version: 0.1.0
-## SavedVariables: StimCoachDB
+## SavedVariables: StimDB
 
 Data.lua
 Tracker.lua
 Policy.lua
+Config.lua
 Core.lua

@@ -1,14 +1,14 @@
-# StimCoach
+# Stim
 
 Flashes your next three spells next to your character, Hekili-style, on WoW Forever. The recommendations
 come from stim's simulation-trained policy, distilled into a small network that runs in the addon.
-Every press is yours: StimCoach only shows icons.
+Every press is yours: Stim only shows icons.
 
 Feral Druid (cat) for now.
 
 ## Install
 
-Copy this folder (`StimCoach`, with all its `.lua` files and the `.toc`) into
+Copy this folder (`Stim`, with all its `.lua` files and the `.toc`) into
 `World of Warcraft/_classic_beta_/Interface/AddOns/` (the beta), or the live Forever AddOns folder once
 it ships. Log in on your druid and target something hostile.
 
@@ -17,7 +17,10 @@ it ships. Log in on your druid and target something hostile.
 | `/stim unlock`, then drag, then `/stim lock` | Move the icons |
 | `/stim scale 1.2` | Resize |
 | `/stim count 2` | Show 1-3 spells |
+| `/stim pulse off` | Stop pulsing the first icon |
+| `/stim desat 0.5` | Grey until this many seconds away |
 | `/stim toggle` | Show or hide |
+| `/stim config` | Open options panel |
 | `/stim reset` | Default position and size |
 
 The first icon pulses. It's greyed out while the spell is still a short wait away, for example while
@@ -26,14 +29,14 @@ you pool energy.
 ## How it works within Forever's rules
 
 In combat, Forever hides energy, combo points, buffs, cooldown values and target health from addon
-code. StimCoach doesn't try to read them. It works from what the game allows:
+code. Stim doesn't try to read them. It works from what the game allows:
 - **Your own casts.** It tracks cooldowns, the GCD, and your Rip, Rake and Faerie Fire timers on your
   target. It also tracks your Berserk window, builders since your last finisher, and an energy
   estimate.
 - **Range checks and the clock.**
 - **Resource values read before the pull.**
 
-Energy matters most, so StimCoach precomputes a recommendation for each fifth of your energy bar.
+Energy matters most, so Stim precomputes a recommendation for each fifth of your energy bar.
 The game itself decides which one to show: `UnitPowerPercent` with a step curve, drawn as the frame's
 alpha, the same mechanism WeakAuras Forever's "Show only below (%)" uses. The addon never reads your
 energy.
@@ -51,7 +54,7 @@ behind the target; Claw doesn't.
 
 These numbers are from the simulator, not the game. The comparison is against a full-information
 priority list built from the Oct 1 guides, which an addon couldn't run on Forever anyway. Following
-StimCoach's suggestions:
+Stim's suggestions:
 - **Single-target boss:** within about 2% (−8 ± 4 DPS)
 - **Boss with add waves:** slightly ahead (+9 ± 4)
 - **Trash:** ahead (+22 ± 10)

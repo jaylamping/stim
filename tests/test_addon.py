@@ -19,7 +19,7 @@ from stim.policies import AplPolicy, EpsilonPolicy  # noqa: E402
 from stim.scenarios import make_scenario  # noqa: E402
 from stim.spec import load_spec  # noqa: E402
 
-ADDON = Path(__file__).resolve().parents[1] / "addon" / "StimCoach"
+ADDON = Path(__file__).resolve().parents[1] / "addon" / "Stim"
 
 
 class Recorder(Tracker):
@@ -57,11 +57,11 @@ def small_net(tracker, seed=0):
     return net.double().eval()
 
 
-def lua_addon(spec, net, files=("Tracker", "Policy")):
+def lua_addon(spec, net, files=("Tracker", "Policy", "Config")):
     L = lua51.LuaRuntime(unpack_returned_tuples=True)
     ns = L.table()
     load = L.execute("return function(code, ns, name) local f, err = loadstring(code, name)\n"
-                     "if not f then error(err) end; return f('StimCoach', ns) end")
+                     "if not f then error(err) end; return f('Stim', ns) end")
     load(data_lua(spec, net), ns, "Data.lua")
     for name in files:
         load((ADDON / f"{name}.lua").read_text(), ns, f"{name}.lua")
@@ -205,21 +205,21 @@ def test_addon_loads_and_the_game_gates_the_right_band():
     L.execute(WOW_MOCK)
     ns = L.table()
     load = L.execute("return function(code, ns, name) local f, err = loadstring(code, name)\n"
-                     "if not f then error(err) end; return f('StimCoach', ns) end")
+                     "if not f then error(err) end; return f('Stim', ns) end")
     load(data_lua(spec, net), ns, "Data.lua")
-    for name in ("Tracker", "Policy", "Core"):
+    for name in ("Tracker", "Policy", "Config", "Core"):
         load((ADDON / f"{name}.lua").read_text(), ns, f"{name}.lua")
     g = L.globals()
     events = next(f for f in g.FRAMES.values() if f.scripts.OnEvent is not None)
     fire = lambda *a: events.scripts.OnEvent(events, *a)  # noqa: E731
-    fire("ADDON_LOADED", "StimCoach")
+    fire("ADDON_LOADED", "Stim")
     g.SetMock(10.0, 100)
     fire("PLAYER_REGEN_DISABLED")
     fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-1", 5221)  # Shred
     for energy, band in ((55.0, 3), (5.0, 1), (95.0, 5)):
         g.SetMock(11.5, energy)
         events.scripts.OnUpdate(events, 0.25)
-        root = g.StimCoachFrame
+        root = g.StimFrame
         assert root.shown
         strips = [f for f in g.FRAMES.values() if f.icons is not None]
         assert len(strips) == len(spec_bands := Tracker(spec).bands())
@@ -227,9 +227,9 @@ def test_addon_loads_and_the_game_gates_the_right_band():
         assert alphas == [1 if i == band - 1 else 0 for i in range(len(spec_bands))], alphas
         first = strips[band - 1].icons[1]
         assert first.shown and str(first.tex.texture).startswith("tex:")
-    assert g.SlashCmdList.STIMCOACH is not None
-    g.SlashCmdList.STIMCOACH("count 2")
-    assert g.StimCoachDB.count == 2
+    assert g.SlashCmdList.STIM is not None
+    g.SlashCmdList.STIM("count 2")
+    assert g.StimDB.count == 2
     # a rank- or form-suffixed spell name still counts as the ability
     g.SPELLS[16979] = "Feral Charge - Cat"
     fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-2", 16979)
@@ -243,13 +243,40 @@ def test_addon_stays_hidden_for_other_classes():
     L.execute(WOW_MOCK + '\nfunction UnitClass() return "Mage", "MAGE" end')
     ns = L.table()
     load = L.execute("return function(code, ns, name) local f, err = loadstring(code, name)\n"
-                     "if not f then error(err) end; return f('StimCoach', ns) end")
+                     "if not f then error(err) end; return f('Stim', ns) end")
     load(data_lua(spec, net), ns, "Data.lua")
-    for name in ("Tracker", "Policy", "Core"):
+    for name in ("Tracker", "Policy", "Config", "Core"):
         load((ADDON / f"{name}.lua").read_text(), ns, f"{name}.lua")
     g = L.globals()
     events = next(f for f in g.FRAMES.values() if f.scripts.OnEvent is not None)
-    events.scripts.OnEvent(events, "ADDON_LOADED", "StimCoach")
+    events.scripts.OnEvent(events, "ADDON_LOADED", "Stim")
     events.scripts.OnEvent(events, "PLAYER_REGEN_DISABLED")
     events.scripts.OnUpdate(events, 0.25)
-    assert not g.StimCoachFrame.shown
+    assert not g.StimFrame.shown
+
+
+def test_config_defaults_parse_and_apply():
+    L = lua51.LuaRuntime(unpack_returned_tuples=True)
+    ns = L.table()
+    load = L.execute("return function(code, ns, name) local f, err = loadstring(code, name)\n"
+                     "if not f then error(err) end; return f('Stim', ns) end")
+    load((ADDON / "Config.lua").read_text(), ns, "Config.lua")
+    C = ns.Config
+    assert set(C.DEFAULTS.keys()) >= {"scale", "count", "shown", "locked", "pulse", "desatDelay"}
+    assert {o.key for o in C.schema().values()} >= {"scale", "count", "shown", "locked", "pulse", "desatDelay"}
+    db = C.ensure(L.table_from({"scale": 9, "count": 99}))
+    assert float(db.scale) == 2 and int(db.count) == 3
+    assert C.parse("SCALE 1.2") == ("scale", "1.2")
+    C.apply(db, "scale", "1.2")
+    assert abs(float(db.scale) - 1.2) < 1e-9
+    C.apply(db, "count", "2")
+    assert int(db.count) == 2
+    C.apply(db, "pulse", "off")
+    assert bool(db.pulse) is False
+    C.apply(db, "desat", "0.5")
+    assert abs(float(db.desatDelay) - 0.5) < 1e-9
+    C.apply(db, "toggle", "")
+    assert bool(db.shown) is False
+    C.apply(db, "reset", "")
+    assert int(db.count) == 3 and bool(db.shown) is True
+    assert "pulse" in C.apply(db, "bogus", "")

@@ -4,28 +4,27 @@ Last updated 2026-10-04, session 2 (in progress).
 
 ## TL;DR
 
-stim is a simulation-trained rotation brain for WoW, targeting WoW Forever first (Feral Druid is
-the first spec you'll play). Instead of a hand-written priority list, a search-based teacher finds
-the best ability by simulating ahead, and a small Jev-style decision model learns to make the same
-call in about a millisecond.
+stim is a rotation helper for WoW Forever, trained in a combat simulator. Feral Druid is the first
+spec. A teacher scores each usable ability by simulating the fight forward, and a small Jev-style
+transformer learns to imitate it at about 1 ms per decision.
 
 **Done:** a class-agnostic melee combat engine where every class is a TOML data file. There are
 three specs (Feral, Combat Rogue, Fury Warrior), three encounter types, baseline policies (random,
 class-agnostic greedy, and a Hekili-style priority-list interpreter), and 21 passing tests.
 
-**Session 2 (all uncommitted):**
+**Session 2:**
 - **The brain pipeline works end to end:** rollout teacher, entity-token features, Jev-style
   model, training, and evaluation. Students beat the baselines in most fights and beat the noisy
   teacher they learn from.
 - **Expert iteration works:** round 1 fixed single-target Rogue.
 - **Feral is rebuilt** to the Oct 1 beta kit.
-- **The front end is now an in-game addon, StimCoach** (`addon/StimCoach`, Feral). It flashes the
+- **The front end is now an in-game addon, Stim** (`addon/Stim`, Feral). It flashes the
   next 3 spells and plays about even with the full-information priority list in the sim, using only
   what Forever lets addons see. Energy comes from game-side gating. It's untested in the real
   client.
 - **The practice trainer** (`stim.trainer`) works but is shelved.
 
-**Next:** try StimCoach in game and fix what breaks (spell names, API behavior in combat). Then
+**Next:** try Stim in game and fix what breaks (spell names, API behavior in combat). Then
 Clearcasting gating, expert iteration for the addon, then more specs.
 
 ## Getting set up
@@ -187,7 +186,7 @@ Sources:
 | `scripts/evaluate.py` | Full-fight DPS of any policies on paired seeds (`greedy`, `apl`, `student=<ckpt>`, `addon=<ckpt>`, `teacher:<rollout>`), optional spec randomization, decision latency |
 | `src/stim/addon/` | The in-game addon's Python side: `tracker.py` (what the addon can know, energy bands), `policy.py` (small MLP, `AddonPolicy` follower, examples), `export.py` (Data.lua and .toc) |
 | `scripts/train_addon.py`, `scripts/export_addon.py` | Train the addon policy; write the addon's data |
-| `addon/StimCoach/` | The addon: `Tracker.lua`, `Policy.lua`, `Core.lua`, generated `Data.lua`, `.toc`, README |
+| `addon/Stim/` | The addon: `Tracker.lua`, `Policy.lua`, `Core.lua`, generated `Data.lua`, `.toc`, README |
 | `src/stim/trainer/` | Practice trainer (shelved): `session.py` (game logic, review), `server.py` (WebSocket), `static/index.html`; run with `python -m stim.trainer` |
 | `tests/test_addon.py`, `tests/test_trainer.py` | Lua/Python parity and mocked-WoW addon tests; trainer session tests |
 
@@ -470,7 +469,7 @@ and target health. The combat log is off-limits to addons.
 4. **Export:** a script writes the addon (tracker, weights, icon strip) for a spec. Lua is tested
    against Python test vectors with an embedded Lua runtime, since we can't run the game here.
 
-**Status: built, Feral only, untested in the real client.** `addon/StimCoach/` (see its README) has:
+**Status: built, Feral only, untested in the real client.** `addon/Stim/` (see its README) has:
 - `Tracker.lua` and `Policy.lua`, which mirror the Python
 - `Core.lua`: events, display, `/stim`
 - generated `Data.lua` and `.toc`, written by `scripts/export_addon.py`
@@ -494,7 +493,7 @@ the addon MLP with one oracle input at a time (boss fights, paired against the f
 
 The addon can't read energy, but `UnitPowerPercent(unit, powerType, false, curve)` evaluates a step
 curve on the real value and the result can be a frame's alpha. That's what WeakAuras Forever's "Show
-only below (%)" does (WeakAuras-Forever `Prototypes.lua`, `ThresholdAlpha`). So StimCoach
+only below (%)" does (WeakAuras-Forever `Prototypes.lua`, `ThresholdAlpha`). So Stim
 precomputes a queue for each of 5 energy bands, and the game shows the right one.
 
 Policy trained with banded energy (`runs/addon1`: 42k Feral states, 8,843 weights), full fights vs.
@@ -525,7 +524,7 @@ it's left for v2.
 
 ## Next steps, in order
 
-1. **Try StimCoach in game** (Feral, beta). Likely fixes:
+1. **Try Stim in game** (Feral, beta). Likely fixes:
    - spell names that differ in game
    - APIs that behave differently in combat (range checks, `UnitPowerPercent` gating)
    - whether the strip should hide in bear form
@@ -678,7 +677,7 @@ against the model. This needs a real Forever log to build against.
 
 - Do you have Forever beta access? With it we can read real tooltip numbers and grab a combat log
   for the coach. The beta cap is 30, so level-60 numbers will still come from client data.
-- When you try StimCoach in game: does each cast register (the strip changes as you press), does the
+- When you try Stim in game: does each cast register (the strip changes as you press), does the
   energy gating switch strips as your energy moves, and do any spells have different names?
 - Which talents do you take? `feral.toml` assumes Ferocity 5/5, Shredding Attacks 2/2, Primal Fury
   2/2 and Berserk, and not Improved Shifting Power.

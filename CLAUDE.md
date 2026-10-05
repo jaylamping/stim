@@ -32,7 +32,7 @@ uv run python scripts/calibrate_values.py --policy apl          # measured resou
 uv run python scripts/gen_data.py --out runs/gen0 --episodes 350  # teacher-labeled states
 uv run python scripts/train.py --data runs/gen0 --out runs/gen0/student.pt
 uv run python scripts/evaluate.py --policies greedy apl student=runs/gen0/student.pt
-# the in-game addon (addon/StimCoach): data with tracker views, a small policy, then Data.lua
+# the in-game addon (addon/Stim): data with tracker views, a small policy, then Data.lua
 uv run python scripts/gen_data.py --out runs/addon1 --specs feral --episodes 700
 uv run python scripts/train_addon.py --data runs/addon1 --spec feral --out runs/addon1/addon_feral.pt
 uv run python scripts/export_addon.py --spec feral --model runs/addon1/addon_feral.pt
